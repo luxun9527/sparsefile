@@ -1,4 +1,4 @@
-module github.com/mofei1/sparsefile
+module github.com/luxun9527/sparsefile
 
 go 1.18
 
