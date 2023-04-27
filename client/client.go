@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"flag"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"time"
@@ -42,7 +44,7 @@ func main() {
 	defer fd.Close()
 	conn, err := net.DialTimeout("tcp", addr, time.Second*5)
 	if err != nil {
-		logrus.Panic("addr valid", err)
+		logrus.Panic("conn addr failed", err)
 	}
 	defer conn.Close()
 	target := remote{conn: conn}
@@ -55,7 +57,7 @@ func main() {
 	if err := sfc.Copy(context.Background(), target); err != nil {
 		logrus.Printf("copy to remote failed %v", err)
 	}
-	time.Sleep(time.Second * 90)
+	//time.Sleep(time.Second * 90)
 }
 
 type sparseFileClient struct {
@@ -141,7 +143,13 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 		//https://www.zhihu.com/question/407305048
 		//SEEK_DATA的意思很明确，就是从指定的offset开始往后找，找到在大于等于offset的第一个不是Hole的地址。如果offset正好指在一个DATA区域的中间，那就返回offset。
 		//不要去处理这个错误，当文件为空或一些异常情况这个地方会报错
-		data, _ := sc.srcFs.Seek(curOffset, unix.SEEK_DATA)
+		data, err := sc.srcFs.Seek(curOffset, unix.SEEK_DATA)
+		if err != nil {
+			if errors.Is(unix.ENXIO, err.(*fs.PathError).Unwrap()) {
+				return nil
+			}
+			return err
+		}
 		//有时出现hole不是结尾，当data变成0的时候,data会小于上个hole的位置。
 		if data < lastHole {
 			return nil
