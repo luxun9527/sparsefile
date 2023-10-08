@@ -5,5 +5,3 @@ temp
 bin/*
 ./cmd/ws/bin
 
-test*.sh
-test

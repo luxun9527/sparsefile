@@ -72,9 +72,6 @@ type MetaData struct {
 	Size int64
 	Path string
 }
-type local struct {
-	*os.File
-}
 
 var totalBytes int64
 
@@ -129,9 +126,10 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 	curHole, lastHole := int64(0), int64(0)
 	stat, _ := sc.srcFs.Stat()
 	end := stat.Size()
-	sec := 1024 * 1024 * 2
+	sec := 1024 * 1024 * 10
 	buf := make([]byte, sec)
 	for {
+		//重置buf
 		if len(buf) < sec {
 			buf = make([]byte, sec)
 		}
@@ -150,12 +148,15 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 			}
 			return err
 		}
+		//logrus.Debug("data position ", data)
 		//有时出现hole不是结尾，当data变成0的时候,data会小于上个hole的位置。
 		if data < lastHole {
 			return nil
 		}
 		//SEEK_HOLE的意思就是从offset开始找，找到大于等于offset的第一个Hole开始的地址。如果offset指在一个Hole的中间，那就返回offset。如果offset后面再没有更多的hole了，那就返回文件结尾。
 		hole, _ := sc.srcFs.Seek(data, unix.SEEK_HOLE)
+		//logrus.Debug("hole position ", hole)
+
 		//空文件直接返回
 		if hole == 0 && data == 0 {
 			return nil
@@ -164,7 +165,7 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 			lastHole = curHole
 			curHole = hole
 		}
-		//跳到数据的区的位置
+		//跳到数据的区的开始位置。
 		curOffset, _ = sc.srcFs.Seek(data, io.SeekStart)
 
 		dataZoneSize := hole - data
@@ -178,12 +179,13 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 			return ctx.Err()
 		default:
 			n, err := sc.srcFs.Read(buf)
-			if err != nil && err != io.EOF {
-				return err
-			}
 			if err == io.EOF {
 				return nil
 			}
+			if err != nil {
+				return err
+			}
+
 			if _, err := writer.WriteAt(buf[:n], curOffset); err != nil {
 				return err
 			}

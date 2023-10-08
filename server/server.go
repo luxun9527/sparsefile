@@ -58,7 +58,6 @@ type MetaData struct {
 	Path string
 }
 
-//要考虑一次读不完一条河一次读出多条的情况。
 func (c *sparseFileServer) hande() {
 	defer c.conn.Close()
 	//读取出路径的长度
