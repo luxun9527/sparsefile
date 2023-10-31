@@ -48,3 +48,17 @@ Usage of ./sparsefile-client:
 
 ```
 
+
+
+执行命令
+
+```
+./sparsefile-server -v
+
+./sparsefile-client -s ../client/test.txt -h 127.0.0.1:9992 -d /dest.txt -v
+[root@localhost bin]# md5sum /dest.txt
+2c15d2b370eb22827964d7ed92673ea5  /dest.txt
+[root@localhost bin]# md5sum ../client/test.txt
+2c15d2b370eb22827964d7ed92673ea5  ../client/test.txt
+```
+
