@@ -19,17 +19,32 @@
 0       sparseFileTest
 ```
 
- 使用scp或ftp传输该文件，会将复制1024000000个字节，我们可以使用SEEK_HOLE,SEEK_DATA的方式,取出稀疏文件的有效数据块然后传输。文件系统读取是按块读取一般是4k,所以传到远程的稀疏文件和真实的文件大小可能会有一点差异，一些无效的字节也被读取，不过一般不会很大。
+ 使用scp,ftp或rsync传输该文件的所有字节，我们可以使用SEEK_HOLE,SEEK_DATA的方式,取出稀疏文件的有效数据块然后传输。文件系统读取是按块读取一般是4k,所以传到远程的稀疏文件和真实的文件大小可能会有一点差异，一些无效的字节也被读取，不过一般不会很大。
 
 服务端
 
 ```bash
-nohup ./sparsefile-server -p 9992 
+[root@localhost sparsefile]# ./bin/sparsefile-server -h
+Usage of ./bin/sparsefile-server:
+  -port uint
+        端口 (default 9992)
+  -v    是否显示日志
+
 ```
 
 客户端
 
 ```bash
-./sparsefile-client -path 稀疏文件的路径 -addr 远程的ip和端口 targetPath 远程文件的位置
+[root@localhost bin]# ./sparsefile-client -h
+flag needs an argument: -h
+Usage of ./sparsefile-client:
+  -d string
+        目的地的路径
+  -h string
+        目的地的ip和端口
+  -s string
+        要发送的文件的地址
+  -v    是否显示日志
+
 ```
 

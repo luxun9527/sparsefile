@@ -18,18 +18,18 @@ import (
 
 func main() {
 	var (
-		path       string
-		addr       string
-		targetPath string
-		v          bool
+		src     string
+		address string
+		dest    string
+		v    bool
 	)
-	flag.StringVar(&path, "path", "", "文件路径")
-	flag.StringVar(&addr, "addr", "", "目的地的ip和端口")
-	flag.StringVar(&targetPath, "targetPath", "", "目的地的路径")
+	flag.StringVar(&src, "s", "", "要发送的文件的地址")
+	flag.StringVar(&address, "h", "", "目的地的ip和端口")
+	flag.StringVar(&dest, "d", "", "目的地的路径")
 	flag.BoolVar(&v, "v", false, "是否显示日志")
 	flag.Parse()
-	if path == "" || addr == "" {
-		logrus.Panic("path and addr must have a value")
+	if src == "" || address == "" {
+		logrus.Panic("src and address must have a value")
 	}
 	if v {
 		logrus.SetLevel(logrus.DebugLevel)
@@ -37,20 +37,20 @@ func main() {
 		logrus.SetLevel(logrus.ErrorLevel)
 	}
 
-	fd, err := os.Open(path)
+	fd, err := os.Open(src)
 	if err != nil {
-		logrus.Panic("path valid", err)
+		logrus.Panic("src valid", err)
 	}
 	defer fd.Close()
-	conn, err := net.DialTimeout("tcp", addr, time.Second*5)
+	conn, err := net.DialTimeout("tcp", address, time.Second*5)
 	if err != nil {
-		logrus.Panic("conn addr failed", err)
+		logrus.Panic("conn address failed", err)
 	}
 	defer conn.Close()
 	target := remote{conn: conn}
 	stat, _ := fd.Stat()
-	if err := target.writeMetaData(targetPath, stat.Size()); err != nil {
-		logrus.Errorf("write path to remote failed %v", err)
+	if err := target.writeMetaData(dest, stat.Size()); err != nil {
+		logrus.Errorf("write src to remote failed %v", err)
 		return
 	}
 	sfc := sparseFileClient{srcFs: fd}
@@ -71,9 +71,6 @@ type remote struct {
 type MetaData struct {
 	Size int64
 	Path string
-}
-type local struct {
-	*os.File
 }
 
 var totalBytes int64
@@ -123,19 +120,21 @@ func (r remote) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 // Copy  将稀疏文件有效的块拷贝到目的地
+// 从数据区开始  数据区开始位置-------数据区结算位置____hole____
 func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 	curOffset := int64(0)
 	//当前hole的offset 上一个hole的offset
 	curHole, lastHole := int64(0), int64(0)
 	stat, _ := sc.srcFs.Stat()
 	end := stat.Size()
-	sec := 1024 * 1024 * 2
+	sec := 1024 * 1024 * 10
 	buf := make([]byte, sec)
 	for {
+		//重置buf
 		if len(buf) < sec {
 			buf = make([]byte, sec)
 		}
-		//如果跳到文件的结尾表示结束
+		//如果跳到文件的结尾表示结束,测试中大部分文件会走到这里
 		if curOffset == end {
 			return nil
 		}
@@ -150,12 +149,16 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 			}
 			return err
 		}
-		//有时出现hole不是结尾，当data变成0的时候,data会小于上个hole的位置。
+		//logrus.Debug("data position ", data)
+		//有时出现hole不是结尾，当出data比上一个hole还小的时候返回。
 		if data < lastHole {
 			return nil
 		}
+
 		//SEEK_HOLE的意思就是从offset开始找，找到大于等于offset的第一个Hole开始的地址。如果offset指在一个Hole的中间，那就返回offset。如果offset后面再没有更多的hole了，那就返回文件结尾。
 		hole, _ := sc.srcFs.Seek(data, unix.SEEK_HOLE)
+		//logrus.Debug("hole position ", hole)
+
 		//空文件直接返回
 		if hole == 0 && data == 0 {
 			return nil
@@ -164,7 +167,7 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 			lastHole = curHole
 			curHole = hole
 		}
-		//跳到数据的区的位置
+		//跳到数据的区的开始位置。
 		curOffset, _ = sc.srcFs.Seek(data, io.SeekStart)
 
 		dataZoneSize := hole - data
@@ -178,12 +181,13 @@ func (sc sparseFileClient) Copy(ctx context.Context, writer io.WriterAt) error {
 			return ctx.Err()
 		default:
 			n, err := sc.srcFs.Read(buf)
-			if err != nil && err != io.EOF {
-				return err
-			}
 			if err == io.EOF {
 				return nil
 			}
+			if err != nil {
+				return err
+			}
+
 			if _, err := writer.WriteAt(buf[:n], curOffset); err != nil {
 				return err
 			}
