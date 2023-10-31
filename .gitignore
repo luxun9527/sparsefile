@@ -1,6 +1,5 @@
 .vscode
-
 temp
 .idea
-**/bin
 
+**/bin
